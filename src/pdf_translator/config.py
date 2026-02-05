@@ -5,6 +5,20 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+def _parse_env_bool(name: str, default: bool) -> bool:
+    """Parse boolean-like environment variables safely."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 @dataclass
 class Config:
     """Configuration for the PDF translator."""
@@ -21,9 +35,9 @@ class Config:
     ))
     
     # Vision model settings
-    use_vision: bool = field(default_factory=lambda: os.getenv(
-        "PDF_TRANSLATOR_USE_VISION", "true"
-    ).lower() == "true")
+    use_vision: bool = field(default_factory=lambda: _parse_env_bool(
+        "PDF_TRANSLATOR_USE_VISION", True
+    ))
     vision_model: str = field(default_factory=lambda: os.getenv(
         "PDF_TRANSLATOR_VISION_MODEL", ""
     ))

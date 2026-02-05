@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "rennerdo30" }
 ]
 keywords = ["pdf", "translator", "ocr", "openai", "ai"]
 classifiers = [
@@ -40,6 +40,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "build>=1.2.0",
 ]
 
 [project.scripts]
@@ -47,9 +48,9 @@ pdf-translate = "pdf_translator.cli:main"
 pdf-translate-gui = "pdf_translator.gui:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pdf-translator"
-Repository = "https://github.com/yourusername/pdf-translator"
-Issues = "https://github.com/yourusername/pdf-translator/issues"
+Homepage = "https://github.com/rennerdo30/pdf-translator"
+Repository = "https://github.com/rennerdo30/pdf-translator"
+Issues = "https://github.com/rennerdo30/pdf-translator/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdf_translator"]
@@ -57,6 +58,16 @@ packages = ["src/pdf_translator"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
+    "/tests",
+    "/.github",
     "/README.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/CODE_OF_CONDUCT.md",
+    "/SECURITY.md",
     "/LICENSE",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

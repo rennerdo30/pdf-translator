@@ -6,12 +6,11 @@ from tkinter import (
     Tk, Frame, Label, Entry, Button, StringVar, filedialog,
     messagebox, ttk, Text, Scrollbar, END, DISABLED, NORMAL
 )
-from typing import Optional
 
 from pdf_translator.config import Config
 from pdf_translator.pdf_handler import PDFHandler
 from pdf_translator.ocr import OCRProcessor
-from pdf_translator.translator import Translator, chunk_text
+from pdf_translator.translator import Translator, translate_text_with_chunking
 
 
 class PDFTranslatorGUI:
@@ -170,6 +169,10 @@ class PDFTranslatorGUI:
     
     def _log(self, message: str):
         """Add message to log area."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._log, message)
+            return
+
         self.log_text.config(state=NORMAL)
         self.log_text.insert(END, message + "\n")
         self.log_text.see(END)
@@ -177,8 +180,44 @@ class PDFTranslatorGUI:
     
     def _update_status(self, message: str):
         """Update status label."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._update_status, message)
+            return
+
         self.status_label.config(text=message)
         self.root.update_idletasks()
+
+    def _set_progress(self, value: float):
+        """Update progress value safely from any thread."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._set_progress, value)
+            return
+
+        self.progress["value"] = max(0, min(value, 100))
+
+    def _set_translate_button_state(self, state: str):
+        """Set translate button state safely from any thread."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._set_translate_button_state, state)
+            return
+
+        self.translate_btn.config(state=state)
+
+    def _show_info(self, title: str, message: str):
+        """Show info dialog safely from any thread."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._show_info, title, message)
+            return
+
+        messagebox.showinfo(title, message)
+
+    def _show_error(self, title: str, message: str):
+        """Show error dialog safely from any thread."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, self._show_error, title, message)
+            return
+
+        messagebox.showerror(title, message)
     
     def _start_translation(self):
         """Start translation in a background thread."""
@@ -201,29 +240,46 @@ class PDFTranslatorGUI:
         if not self.target_lang.get():
             messagebox.showerror("Error", "Please select a target language.")
             return
+
+        input_path = Path(self.input_file.get())
+        output_path = Path(self.output_file.get())
+
+        if input_path.resolve() == output_path.resolve():
+            messagebox.showerror("Error", "Output file must be different from input file.")
+            return
         
         self.is_translating = True
-        self.translate_btn.config(state=DISABLED)
-        self.progress["value"] = 0
+        self._set_translate_button_state(DISABLED)
+        self._set_progress(0)
         
         # Run translation in background thread
-        thread = threading.Thread(target=self._do_translation, daemon=True)
+        job = {
+            "input_file": str(input_path),
+            "output_file": str(output_path),
+            "api_url": self.api_url.get(),
+            "api_key": self.api_key.get(),
+            "model": self.model.get(),
+            "source_language": self.source_lang.get(),
+            "target_language": self.target_lang.get(),
+            "use_vision": self.use_vision.get(),
+        }
+        thread = threading.Thread(target=self._do_translation, args=(job,), daemon=True)
         thread.start()
     
-    def _do_translation(self):
+    def _do_translation(self, job: dict[str, str]):
         """Perform the translation (runs in background thread)."""
         try:
-            input_path = Path(self.input_file.get())
-            output_path = Path(self.output_file.get())
+            input_path = Path(job["input_file"])
+            output_path = Path(job["output_file"])
             
             # Build config
             config = Config(
-                api_url=self.api_url.get(),
-                api_key=self.api_key.get() or "lm-studio",
-                model=self.model.get(),
-                source_language=self.source_lang.get(),
-                target_language=self.target_lang.get(),
-                use_vision=self.use_vision.get() == "1",
+                api_url=job["api_url"],
+                api_key=job["api_key"] or "lm-studio",
+                model=job["model"],
+                source_language=job["source_language"],
+                target_language=job["target_language"],
+                use_vision=job["use_vision"] == "1",
             )
             
             self._log(f"Starting translation...")
@@ -238,6 +294,10 @@ class PDFTranslatorGUI:
             
             if not config.use_vision:
                 ocr_processor = OCRProcessor(config.source_language)
+                if not ocr_processor.is_available():
+                    self._log("Warning: Tesseract OCR not available. Falling back to vision mode.")
+                    config.use_vision = True
+                    ocr_processor = None
             
             # Get page count
             page_count = pdf_handler.get_page_count(input_path)
@@ -247,8 +307,8 @@ class PDFTranslatorGUI:
             
             for i, page_data in enumerate(pdf_handler.extract_pages(input_path)):
                 self._update_status(f"Translating page {i + 1}/{page_count}...")
-                self.progress["value"] = (i / page_count) * 100
-                self.root.update_idletasks()
+                if page_count:
+                    self._set_progress((i / page_count) * 100)
                 
                 translated_text = ""
                 
@@ -261,14 +321,20 @@ class PDFTranslatorGUI:
                         self._log(f"  Page {i + 1}: Vision failed - {e}")
                         if page_data.text_blocks:
                             page_text = "\n\n".join(b.text for b in page_data.text_blocks)
-                            translated_text = translator.translate_text(page_text)
+                            translated_text = translate_text_with_chunking(
+                                translator,
+                                page_text,
+                                max_chars=config.max_tokens_per_chunk,
+                            )
                 
                 elif page_data.has_text:
                     # Extract and translate text
                     page_text = "\n\n".join(block.text for block in page_data.text_blocks)
-                    chunks = chunk_text(page_text)
-                    translated_chunks = [translator.translate_text(c) for c in chunks]
-                    translated_text = "\n\n".join(translated_chunks)
+                    translated_text = translate_text_with_chunking(
+                        translator,
+                        page_text,
+                        max_chars=config.max_tokens_per_chunk,
+                    )
                     self._log(f"  Page {i + 1}: Text translation complete")
                 
                 elif ocr_processor and page_data.image_bytes:
@@ -276,7 +342,11 @@ class PDFTranslatorGUI:
                     try:
                         ocr_text = ocr_processor.extract_text(page_data.image_bytes)
                         if ocr_text.strip():
-                            translated_text = translator.translate_text(ocr_text)
+                            translated_text = translate_text_with_chunking(
+                                translator,
+                                ocr_text,
+                                max_chars=config.max_tokens_per_chunk,
+                            )
                             self._log(f"  Page {i + 1}: OCR + translation complete")
                     except Exception as e:
                         self._log(f"  Page {i + 1}: OCR failed - {e}")
@@ -285,22 +355,23 @@ class PDFTranslatorGUI:
             
             # Create output PDF
             self._update_status("Creating output PDF...")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             pdf_handler.create_translated_pdf(input_path, output_path, translated_pages)
             
-            self.progress["value"] = 100
+            self._set_progress(100)
             self._update_status("Translation complete!")
             self._log(f"\n✓ Saved to: {output_path}")
             
-            messagebox.showinfo("Success", f"Translation complete!\n\nSaved to:\n{output_path}")
+            self._show_info("Success", f"Translation complete!\n\nSaved to:\n{output_path}")
             
         except Exception as e:
             self._log(f"\n✗ Error: {e}")
             self._update_status("Error occurred")
-            messagebox.showerror("Error", f"Translation failed:\n\n{e}")
+            self._show_error("Error", f"Translation failed:\n\n{e}")
         
         finally:
             self.is_translating = False
-            self.translate_btn.config(state=NORMAL)
+            self._set_translate_button_state(NORMAL)
     
     def run(self):
         """Start the GUI event loop."""

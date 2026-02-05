@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from pdf_translator.config import Config
 from pdf_translator.pdf_handler import PDFHandler
 from pdf_translator.ocr import OCRProcessor
-from pdf_translator.translator import Translator, chunk_text
+from pdf_translator.translator import Translator, translate_text_with_chunking
 from pdf_translator.logging_config import setup_logging
 
 logger = logging.getLogger("pdf_translator.cli")
@@ -131,6 +131,12 @@ def main(
     else:
         output = input_file.parent / f"{input_file.stem}_translated.pdf"
         config.output_path = str(output)
+
+    if input_file.resolve() == output.resolve():
+        raise click.BadParameter(
+            "Output file must be different from input file.",
+            param_hint="--output",
+        )
     
     console.print(f"\n[bold blue]PDF Translator[/bold blue]")
     console.print(f"  Input:  {input_file}")
@@ -175,14 +181,11 @@ def main(
             if page_data.has_text and not config.use_vision:
                 # Page has native text - extract and translate
                 page_text = "\n\n".join(block.text for block in page_data.text_blocks)
-                chunks = chunk_text(page_text)
-                translated_chunks = []
-                
-                for chunk in chunks:
-                    translated_chunk = translator.translate_text(chunk)
-                    translated_chunks.append(translated_chunk)
-                
-                translated_text = "\n\n".join(translated_chunks)
+                translated_text = translate_text_with_chunking(
+                    translator,
+                    page_text,
+                    max_chars=config.max_tokens_per_chunk,
+                )
             
             elif config.use_vision and page_data.image_bytes:
                 # Use vision model for direct translation
@@ -193,14 +196,22 @@ def main(
                     # Fallback to text if available
                     if page_data.has_text:
                         page_text = "\n\n".join(block.text for block in page_data.text_blocks)
-                        translated_text = translator.translate_text(page_text)
+                        translated_text = translate_text_with_chunking(
+                            translator,
+                            page_text,
+                            max_chars=config.max_tokens_per_chunk,
+                        )
             
             elif ocr_processor and page_data.image_bytes:
                 # Use OCR for scanned pages
                 try:
                     ocr_text = ocr_processor.extract_text(page_data.image_bytes)
                     if ocr_text.strip():
-                        translated_text = translator.translate_text(ocr_text)
+                        translated_text = translate_text_with_chunking(
+                            translator,
+                            ocr_text,
+                            max_chars=config.max_tokens_per_chunk,
+                        )
                 except Exception as e:
                     console.print(f"[yellow]OCR failed for page {page_data.page_num + 1}: {e}[/yellow]")
             
@@ -208,7 +219,11 @@ def main(
                 # Fallback: just translate whatever text we have
                 if page_data.text_blocks:
                     page_text = "\n\n".join(block.text for block in page_data.text_blocks)
-                    translated_text = translator.translate_text(page_text)
+                    translated_text = translate_text_with_chunking(
+                        translator,
+                        page_text,
+                        max_chars=config.max_tokens_per_chunk,
+                    )
             
             translated_pages.append((page_data.page_num, translated_text))
             progress.advance(task)
@@ -217,9 +232,11 @@ def main(
     console.print("\n[bold]Creating translated PDF...[/bold]")
     if overlay_mode:
         console.print("  Mode: Overlay (replacing original content)")
+        Path(config.output_path).parent.mkdir(parents=True, exist_ok=True)
         pdf_handler.create_overlay_pdf(input_file, Path(config.output_path), translated_pages)
     else:
         console.print("  Mode: Side-by-side (preserving original pages)")
+        Path(config.output_path).parent.mkdir(parents=True, exist_ok=True)
         pdf_handler.create_translated_pdf(input_file, Path(config.output_path), translated_pages)
     
     console.print(f"\n[bold green]✓ Translation complete![/bold green]")

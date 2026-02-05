@@ -2,7 +2,7 @@
 
 import base64
 import logging
-from typing import Optional
+from typing import Any
 
 from openai import OpenAI
 
@@ -58,7 +58,11 @@ Only output the translated text, nothing else. Preserve the original formatting 
             temperature=0.3,
         )
         
-        result = response.choices[0].message.content.strip()
+        result = _extract_response_text(response)
+        if not result:
+            logger.warning("Text translation returned empty content")
+            return ""
+
         logger.info(f"Translation complete: {len(result)} chars output")
         logger.debug(f"Translation preview: {result[:100]}...")
         
@@ -132,7 +136,11 @@ Begin the translation now:"""
             max_tokens=4096,
         )
         
-        result = response.choices[0].message.content.strip()
+        result = _extract_response_text(response)
+        if not result:
+            logger.warning("Vision translation returned empty content")
+            return ""
+
         logger.info(f"Vision translation complete: {len(result)} chars output")
         logger.debug(f"Vision translation preview: {result[:100]}...")
         
@@ -148,6 +156,24 @@ Begin the translation now:"""
             List of translated chunks
         """
         return [self.translate_text(chunk) for chunk in chunks]
+
+
+def translate_text_with_chunking(
+    translator: Translator,
+    text: str,
+    max_chars: int = 2000,
+) -> str:
+    """Translate long text safely by chunking it first."""
+    if not text.strip():
+        return ""
+
+    translated_chunks = []
+    for chunk in chunk_text(text, max_chars=max_chars):
+        translated = translator.translate_text(chunk)
+        if translated:
+            translated_chunks.append(translated)
+
+    return "\n\n".join(translated_chunks)
 
 
 def chunk_text(text: str, max_chars: int = 2000) -> list[str]:
@@ -198,3 +224,36 @@ def chunk_text(text: str, max_chars: int = 2000) -> list[str]:
         chunks.append(current_chunk)
     
     return chunks
+
+
+def _extract_response_text(response: Any) -> str:
+    """Extract text content from a chat completion response."""
+    if response is None:
+        return ""
+
+    choices = getattr(response, "choices", None)
+    if not choices:
+        return ""
+
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", None)
+
+    if isinstance(content, str):
+        return content.strip()
+    if content is None:
+        return ""
+
+    # Some APIs may return a list of content parts.
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            text = None
+            if isinstance(part, dict):
+                text = part.get("text")
+            else:
+                text = getattr(part, "text", None)
+            if text:
+                parts.append(text)
+        return "".join(parts).strip()
+
+    return str(content).strip()
