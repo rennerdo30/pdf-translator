@@ -31,7 +31,7 @@ dependencies = [
     "pymupdf>=1.26.5",
     "pytesseract>=0.3.10",
     "openai>=2.33.0",
-    "click>=8.0.0",
+    "click>=8.1.8",
     "rich>=15.0.0",
     "Pillow>=10.0.0",
 ]
