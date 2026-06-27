@@ -28,7 +28,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "pymupdf>=1.24.0",
+    "pymupdf>=1.26.5",
     "pytesseract>=0.3.10",
     "openai>=2.33.0",
     "click>=8.0.0",
