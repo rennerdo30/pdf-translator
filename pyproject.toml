@@ -28,19 +28,19 @@ classifiers = [
 ]
 
 dependencies = [
-    "pymupdf>=1.24.0",
+    "pymupdf>=1.26.5",
     "pytesseract>=0.3.10",
-    "openai>=1.0.0",
+    "openai>=2.33.0",
     "click>=8.1.8",
-    "rich>=13.0.0",
+    "rich>=15.0.0",
     "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=8.4.2",
     "pytest-cov>=4.0.0",
-    "build>=1.2.0",
+    "build>=1.4.4",
 ]
 
 [project.scripts]
