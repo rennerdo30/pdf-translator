@@ -19,7 +19,7 @@ A cross-platform tool that translates PDF documents using AI, with vision model 
 
 ### Prerequisites
 
-1. Python 3.9+
+1. Python 3.10+
 2. Optional Tesseract (for OCR mode):
    - macOS: `brew install tesseract`
    - Linux: `sudo apt install tesseract-ocr`
