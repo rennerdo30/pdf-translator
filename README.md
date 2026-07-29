@@ -19,8 +19,10 @@ A cross-platform tool that translates PDF documents using AI, with vision model 
 
 ### Prerequisites
 
-1. Python 3.10+
-2. Optional Tesseract (for OCR mode):
+1. Python 3.10+ (with Tkinter available if you want to use the GUI)
+2. An OpenAI-compatible endpoint - either a local server such as LM Studio or Ollama, or the
+   OpenAI API with a key
+3. Optional Tesseract (for OCR mode):
    - macOS: `brew install tesseract`
    - Linux: `sudo apt install tesseract-ocr`
    - Windows: [UB Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki)
@@ -68,15 +70,35 @@ Overlay mode:
 pdf-translate input.pdf -t german --overlay
 ```
 
+## CLI options
+
+| Option | Description |
+|--------|-------------|
+| `-s, --source` | Source language (default `auto`) |
+| `-t, --target` | Target language (required) |
+| `-o, --output` | Output path (default `{input}_translated.pdf`) |
+| `--api-url` | API endpoint URL |
+| `--api-key` | API key |
+| `--model` | Model used for text translation |
+| `--vision-model` | Model used for image-based translation |
+| `--use-vision / --no-vision` | Use a vision model for scanned pages (default: enabled) |
+| `--use-ocr / --no-ocr` | Use OCR instead of the vision model for scanned pages |
+| `--overlay / --side-by-side` | Output mode (default: side-by-side) |
+| `-v, --verbose` | Verbose logging |
+
+Pages with fewer than 50 characters of extractable text (`Config.ocr_threshold`) are treated as
+scanned and are handled by the vision model or by OCR.
+
 ## Configuration
 
-Environment variables:
+Command line options win over environment variables, which win over the defaults:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-api-key"           # default: "lm-studio" (placeholder for local servers)
 export OPENAI_BASE_URL="http://localhost:1234/v1"
-export PDF_TRANSLATOR_MODEL="gpt-4"
-export PDF_TRANSLATOR_USE_VISION="true"
+export PDF_TRANSLATOR_MODEL="gpt-4"            # default: whatever the server serves
+export PDF_TRANSLATOR_VISION_MODEL="gpt-4o"    # falls back to PDF_TRANSLATOR_MODEL
+export PDF_TRANSLATOR_USE_VISION="true"        # accepts 1/0, true/false, yes/no, on/off
 ```
 
 ## Development
